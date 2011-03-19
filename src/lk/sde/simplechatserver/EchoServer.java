@@ -74,8 +74,40 @@ public class EchoServer extends AbstractServer
           }
       }
       
+    if(msg.toString().startsWith("#msg"))
+	{
+		String DestUser=msg.toString().substring(1).split(" ")[1];
+		Thread[] clientThreadList =  this.getClientConnections();
+		boolean isLoginUser=false;
+          	for (int i=0; i<clientThreadList.length; i++)
+    		{
+      			try
+      			{	String ThreadUser=((ConnectionToClient)clientThreadList[i]).getInfo("loginId").toString();
+  				if(ThreadUser.equalsIgnoreCase(DestUser))
+				{((ConnectionToClient)clientThreadList[i]).sendToClient(msg);
+       				 isLoginUser=true;}
+      			}catch (Exception ex) {
+				System.out.println("Error in sending Data");}
+    		}
+              	if(!isLoginUser)
+      		{	try{
+                  		client.sendToClient("unable to send to the destination client");
+			}catch (Exception ex) {
+				System.out.println("Error in replying Status");}
+     		}
+		else
+		{
+			try{
+                  		client.sendToClient("send to the destination client successfully");
+			}catch (Exception ex) {
+				System.out.println("Error in replying Status");}
+		}
+        }
+	else
+	{
       System.out.println("Message received: " +client.getInfo("loginId")+"> "+ msg + " from " + client);
       this.sendToAllClients(msg);
+	}
   }
     
   /**
