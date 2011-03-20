@@ -1,6 +1,7 @@
 package lk.sde.simplechatserver;
 
 
+import lk.sde.common.utils.Login;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.logging.Level;
@@ -42,6 +43,7 @@ public class EchoServer extends AbstractServer
   ServerConsoleCommandFilter serverConsoleCommandFilter;
   ChatServerCommandFilter chatServerCommandFilter;
   List<Channel> channelList;
+  Login lg;
 
   //Constructors ****************************************************
   
@@ -56,6 +58,8 @@ public class EchoServer extends AbstractServer
     serverConsoleCommandFilter = new ServerConsoleCommandFilter();
     chatServerCommandFilter = new ChatServerCommandFilter();
     channelList = new ArrayList<Channel>();
+    lg = new Login("users.csv");
+    lg.readUsersList();
   }
 
   
@@ -70,12 +74,24 @@ public class EchoServer extends AbstractServer
     public void handleMessageFromClient(Object msg, ConnectionToClient client){
         String[] parameterArray;
         String senderId = client.getInfo("loginId")!= null ?client.getInfo("loginId").toString() : null;
+        
 
         if(msg.toString().startsWith("#login")){
-            if(client.getInfo("loginId")==null){ // No previous login session
+            if(client.getInfo("loginId") == null){ // No previous login session
                 client.setInfo("loginId", msg.toString().split("\\s")[1]);
                 senderId = client.getInfo("loginId").toString();
-                this.replyToClient(client, "Successfully logged in as "+senderId);
+
+                String username = msg.toString().split("\\s")[1];
+                String password = msg.toString().split("\\s")[2];
+
+                if(lg.isValidUser(username, password)){
+                    this.replyToClient(client, "Successfully logged in as "+senderId);
+                }else{
+                    try{
+                        client.sendToClient("SERVER MSG> Invalid Login Id OR Password " + " Your session is going to be terminated");
+                        client.close();
+                    }catch(IOException ex){}
+                }
             }
             else{
                 try {
@@ -85,6 +101,20 @@ public class EchoServer extends AbstractServer
                 } catch (IOException ex) {}
             }
             return;
+        }
+
+        if(msg.toString().startsWith("#signup")){
+            String username = msg.toString().split("\\s")[1];
+            String password = msg.toString().split("\\s")[2];
+
+            if(!lg.checkUsername(username)){
+                lg.addNewUser(username, password);
+            }else{
+                try {
+                    client.sendToClient("SERVER MSG> Login Id already exists, Try again");
+                    client.close();
+                } catch (IOException ex) {}
+            }
         }
         
         if(msg.toString().startsWith("#msg")){ // msg DestUser - Content
@@ -230,52 +260,15 @@ public class EchoServer extends AbstractServer
         }
         if(msg.toString().startsWith(ChatServerCommandFilter.COMMAND_SYMBOL+ChatServerCommandFilter.HELP)){
             this.replyToClient(client, "You can only send private messages or message to a channel.\nPrivate message command:\n-Send message to "
-                    + "<user>:\n\t#msg <user> -<your message> \n\tE.g. #msg joe -How are you?\n"+getChannelUsage()+"\n"+getMonitorUsage());
+                    + "<user>:\n\t#msg <user> -<your message> \n\tE.g. #msg joe -How are you?\n"+getChannelUsage());
             return;
-        }
-
-        if (msg.toString().startsWith("#forward")) {
-            String[] tokens = msg.toString().split("#x");
-            if (tokens.length < 3) {
-                System.out.println("Invalid #forward command recieved. Ignoring.");
-                return;
-            }
-
-            String destStr = tokens[1];
-            String destMsg = tokens[2];
-
-            destMsg = "Message received to " + client.getInfo("loginId").toString() + " forwarded. Message is: "+destMsg;
-            System.out.println(destStr + " " + destMsg);
-            String[] destinations = new String[] {};
-            if (destStr.contains(",")) {
-                destinations = destStr.split(",");
-                for (int i = 0; i < destinations.length; i++) {
-                    String destUser = destinations[i];
-                    this.sendToClient(destUser, destMsg, client);
-                }
-                return;
-            } else {
-                this.sendToClient(destStr, destMsg, client);
-                return;
-            }
         }
         
         this.replyToClient(client, "You can only send private messages or message to a channel.\nPrivate message command:\n-Send message to "
-                    + "<user>:\n\t#msg <user> -<your message> \n\tE.g. #msg joe -How are you?\n"+getChannelUsage()+"\n"+getMonitorUsage());
+                    + "<user>:\n\t#msg <user> -<your message> \n\tE.g. #msg joe -How are you?\n"+getChannelUsage());
         
     }
 
-
-    private String getMonitorUsage(){
-       String channelUsage = "Monitor commands:\n"
-               + "-Add a new monitor:\n\t #monitor add <userID>\n"
-               + "-Remove a monitor:\n\t#monitor remove <userID>\n"
-               + "-List all existing monitors:\n\t#monitor list\n"
-               + "-Start monitoring:\n\t#monitor start\n"
-               + "-Stop monitoring:\n\t#monitor stop\n";
-
-       return channelUsage;
-   }
 
     // Helper functions to Handle channels
     private String invalidChannelUsageMessage(){
