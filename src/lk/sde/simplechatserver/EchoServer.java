@@ -77,6 +77,7 @@ public class EchoServer extends AbstractServer
     if(msg.toString().startsWith("#msg"))
 	{ // msg DestUser - Content
 		String DestUser=msg.toString().substring(1).split(" ")[1];
+                int ContentIndex=msg.toString().indexOf("-");
 		Thread[] clientThreadList =  this.getClientConnections();
 		boolean isLoginUser=false;
           	for (int i=0; i<clientThreadList.length; i++)
@@ -84,7 +85,7 @@ public class EchoServer extends AbstractServer
       			try
       			{	String ThreadUser=((ConnectionToClient)clientThreadList[i]).getInfo("loginId").toString();
   				if(ThreadUser.equalsIgnoreCase(DestUser))
-				{ String DestMsg="Private Message From:"+client.getInfo("loginId").toString()+msg.toString();
+				{ String DestMsg="Private Message From:"+client.getInfo("loginId").toString()+msg.toString().substring(ContentIndex);
                                  ((ConnectionToClient)clientThreadList[i]).sendToClient(DestMsg);
        				 isLoginUser=true;}
       			}catch (Exception ex) {
