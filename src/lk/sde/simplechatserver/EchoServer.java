@@ -2,10 +2,8 @@ package lk.sde.simplechatserver;
 
 
 import java.io.IOException;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import lk.sde.common.ServerConsoleCommandFilter;
-import java.net.InetAddress;
+import lk.sde.common.ChatServerCommandFilter;
 import lk.sde.ocsf.server.AbstractServer;
 import lk.sde.ocsf.server.ConnectionToClient;
 import static lk.sde.common.ServerConsoleCommandFilter.*;
@@ -37,6 +35,8 @@ public class EchoServer extends AbstractServer
 
   ServerConsole serverConsole;
   ServerConsoleCommandFilter serverConsoleCommandFilter;
+  ChatServerCommandFilter chatServerCommandFilter;
+
   //Constructors ****************************************************
   
   /**
@@ -48,6 +48,7 @@ public class EchoServer extends AbstractServer
   {
     super(port);
     serverConsoleCommandFilter = new ServerConsoleCommandFilter();
+    chatServerCommandFilter = new ChatServerCommandFilter();
   }
 
   
@@ -59,57 +60,93 @@ public class EchoServer extends AbstractServer
    * @param msg The message received from the client.
    * @param client The connection from which the message originated.
    */
-  public void handleMessageFromClient(Object msg, ConnectionToClient client)
-  {
-      if(msg.toString().startsWith("#login")){
-          if(client.getInfo("loginId")==null){ // No previous login session
-            client.setInfo("loginId", msg.toString().split("\\s")[1]);
-          }
-          else{
-            try {
-                client.sendToClient("SERVER MSG> #login should be the first command to be received. "
-                            + " You session is going to be terminated");
-                client.close();
-            } catch (IOException ex) {}
-          }
-      }
-       System.out.println("Message received: " +client.getInfo("loginId")+"> "+ msg + " from " + client);
-    if(msg.toString().startsWith("#msg"))
-	{ // msg DestUser - Content
-		String DestUser=msg.toString().substring(1).split(" ")[1];
+    public void handleMessageFromClient(Object msg, ConnectionToClient client){
+       // if(chatServerCommandFilter.isCommand(msg.toString())){
+            if(msg.toString().startsWith("#login")){
+                if(client.getInfo("loginId")==null){ // No previous login session
+                    client.setInfo("loginId", msg.toString().split("\\s")[1]);
+                }
+                else{
+                    try {
+                        client.sendToClient("SERVER MSG> #login should be the first command to be received. "
+                                    + " You session is going to be terminated");
+                        client.close();
+                    } catch (IOException ex) {}
+                }
+            }
+            System.out.println("Message received: " +client.getInfo("loginId")+"> "+ msg + " from " + client);
+            if(msg.toString().startsWith("#msg")){ // msg DestUser - Content
+                String destUser=msg.toString().substring(1).split(" ")[1];
                 int ContentIndex=msg.toString().indexOf("-");
-		Thread[] clientThreadList =  this.getClientConnections();
-		boolean isLoginUser=false;
-          	for (int i=0; i<clientThreadList.length; i++)
-    		{
-      			try
-      			{	String ThreadUser=((ConnectionToClient)clientThreadList[i]).getInfo("loginId").toString();
-  				if(ThreadUser.equalsIgnoreCase(DestUser))
-				{ String DestMsg="Private Message From:"+client.getInfo("loginId").toString()+msg.toString().substring(ContentIndex);
-                                 ((ConnectionToClient)clientThreadList[i]).sendToClient(DestMsg);
-       				 isLoginUser=true;}
-      			}catch (Exception ex) {
-				System.out.println("Error in sending Data");}
-    		}
-              	if(!isLoginUser)
-      		{	try{
-                  		client.sendToClient("unable to send to the destination client");
-			}catch (Exception ex) {
-				System.out.println("Error in replying Status");}
-     		}
-		else
-		{
-			try{
-                  		client.sendToClient("send to the destination client successfully");
-			}catch (Exception ex) {
-				System.out.println("Error in replying Status");}
-		}
+                String destMsg = "Private Message From:"+client.getInfo("loginId").toString()+msg.toString().substring(ContentIndex);
+                this.sendToClient(destUser, destMsg, client);
+//                Thread[] clientThreadList =  this.getClientConnections();
+//                boolean isLoginUser=false;
+//                for (int i=0; i<clientThreadList.length; i++){
+//                    try{
+//                        String ThreadUser=((ConnectionToClient)clientThreadList[i]).getInfo("loginId").toString();
+//                        if(ThreadUser.equalsIgnoreCase(DestUser)){
+//                            String DestMsg="Private Message From:"+client.getInfo("loginId").toString()+msg.toString().substring(ContentIndex);
+//                            ((ConnectionToClient)clientThreadList[i]).sendToClient(DestMsg);
+//                            isLoginUser=true;
+//                        }
+//                    }catch (Exception ex) {
+//                        System.out.println("Error in sending Data");
+//                    }
+//                }
+//                if(!isLoginUser){
+//                    try{
+//                        client.sendToClient("unable to send to the destination client");
+//                    }catch (Exception ex) {
+//                        System.out.println("Error in replying Status");
+//                    }
+//                }
+//                else{
+//                    try{
+//                        client.sendToClient("send to the destination client successfully");
+//                    }catch (Exception ex) {
+//                        System.out.println("Error in replying Status");
+//                    }
+//                }
+            }
+        //}
+        else{
+            this.sendToAllClients(msg);
         }
-	else
-	{
-      this.sendToAllClients(msg);
-	}
-  }
+    }
+
+
+
+    private void sendToClient(String destUser, String msg, ConnectionToClient client){
+        Thread[] clientThreadList =  this.getClientConnections();
+        boolean isLoginUser=false;
+        for (int i=0; i<clientThreadList.length; i++){
+            try{
+                String threadUser=((ConnectionToClient)clientThreadList[i]).getInfo("loginId").toString();
+                if(threadUser.equalsIgnoreCase(destUser)){
+                    ((ConnectionToClient)clientThreadList[i]).sendToClient(msg);
+                    isLoginUser=true;
+                    break;
+                }
+            }catch (Exception ex) {
+                System.out.println("Error in sending Data");
+            }
+        }
+        if(!isLoginUser){
+            try{
+                client.sendToClient("unable to send to the destination client");
+            }catch (Exception ex) {
+                System.out.println("Error in replying Status");
+            }
+        }
+        else{
+            try{
+                client.sendToClient("send to the destination client successfully");
+            }catch (Exception ex) {
+                System.out.println("Error in replying Status");
+            }
+       }
+    }
     
   /**
    * This method overrides the one in the superclass.  Called
