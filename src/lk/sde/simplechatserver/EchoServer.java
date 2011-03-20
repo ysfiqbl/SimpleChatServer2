@@ -1,6 +1,11 @@
 package lk.sde.simplechatserver;
 
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import lk.sde.common.Channel;
 import java.io.IOException;
 import lk.sde.common.ServerConsoleCommandFilter;
 import lk.sde.common.ChatServerCommandFilter;
@@ -36,6 +41,7 @@ public class EchoServer extends AbstractServer
   ServerConsole serverConsole;
   ServerConsoleCommandFilter serverConsoleCommandFilter;
   ChatServerCommandFilter chatServerCommandFilter;
+  List<Channel> channelList;
 
   //Constructors ****************************************************
   
@@ -49,6 +55,7 @@ public class EchoServer extends AbstractServer
     super(port);
     serverConsoleCommandFilter = new ServerConsoleCommandFilter();
     chatServerCommandFilter = new ChatServerCommandFilter();
+    channelList = new ArrayList<Channel>();
   }
 
   
@@ -61,25 +68,29 @@ public class EchoServer extends AbstractServer
    * @param client The connection from which the message originated.
    */
     public void handleMessageFromClient(Object msg, ConnectionToClient client){
-       // if(chatServerCommandFilter.isCommand(msg.toString())){
-            if(msg.toString().startsWith("#login")){
-                if(client.getInfo("loginId")==null){ // No previous login session
-                    client.setInfo("loginId", msg.toString().split("\\s")[1]);
-                }
-                else{
-                    try {
-                        client.sendToClient("SERVER MSG> #login should be the first command to be received. "
-                                    + " You session is going to be terminated");
-                        client.close();
-                    } catch (IOException ex) {}
-                }
+        String[] parameterArray;
+        String senderId = client.getInfo("loginId")!= null ?client.getInfo("loginId").toString() : null;
+        if(msg.toString().startsWith("#login")){
+            if(client.getInfo("loginId")==null){ // No previous login session
+                client.setInfo("loginId", msg.toString().split("\\s")[1]);
+                senderId = client.getInfo("loginId").toString();
+                this.replyToClient(client, "Successfully logged in as "+senderId);
             }
-            System.out.println("Message received: " +client.getInfo("loginId")+"> "+ msg + " from " + client);
-            if(msg.toString().startsWith("#msg")){ // msg DestUser - Content
-                String destUser=msg.toString().substring(1).split(" ")[1];
-                int ContentIndex=msg.toString().indexOf("-");
-                String destMsg = "Private Message From:"+client.getInfo("loginId").toString()+msg.toString().substring(ContentIndex);
-                this.sendToClient(destUser, destMsg, client);
+            else{
+                try {
+                    client.sendToClient("SERVER MSG> #login should be the first command to be received. "
+                                    + " You session is going to be terminated");
+                    client.close();
+                } catch (IOException ex) {}
+            }
+            return;
+        }
+        System.out.println("Message received: " +senderId+"> "+ msg + " from " + client);
+        if(msg.toString().startsWith("#msg")){ // msg DestUser - Content
+            String destUser=msg.toString().substring(1).split(" ")[1];
+            int ContentIndex=msg.toString().indexOf("-");
+            String destMsg = "Private Message From:"+client.getInfo("loginId").toString()+msg.toString().substring(ContentIndex);
+            boolean isLoginUser = this.sendToClient(destUser, destMsg, client);
 //                Thread[] clientThreadList =  this.getClientConnections();
 //                boolean isLoginUser=false;
 //                for (int i=0; i<clientThreadList.length; i++){
@@ -94,30 +105,274 @@ public class EchoServer extends AbstractServer
 //                        System.out.println("Error in sending Data");
 //                    }
 //                }
-//                if(!isLoginUser){
-//                    try{
-//                        client.sendToClient("unable to send to the destination client");
-//                    }catch (Exception ex) {
-//                        System.out.println("Error in replying Status");
-//                    }
-//                }
-//                else{
-//                    try{
-//                        client.sendToClient("send to the destination client successfully");
-//                    }catch (Exception ex) {
-//                        System.out.println("Error in replying Status");
-//                    }
-//                }
+            if(!isLoginUser){
+                try{
+                    client.sendToClient("unable to send to the destination client");
+                }catch (Exception ex) {
+                    System.out.println("Error in replying Status");
+                }
             }
-        //}
+            else{
+                try{
+                    client.sendToClient("send to the destination client successfully");
+                }catch (Exception ex) {
+                    System.out.println("Error in replying Status");
+                }
+            }
+        }
+        if(msg.toString().startsWith(ChatServerCommandFilter.COMMAND_SYMBOL+ChatServerCommandFilter.CHANNEL)){
+
+            int contentIndex=-1;
+            String destMsg = this.invalidChannelUsageMessage();
+            StringBuilder channelListBuilder;
+            List<String> channelNameList;
+            try{
+                parameterArray = msg.toString().split("\\s");
+                if(ChatServerCommandFilter.CHANNEL_MSG.equals(parameterArray[1])){
+                    // If this array has a length of less than 3 then the command is invalid
+                    if(parameterArray.length<3){
+                        this.sendToClient(senderId, destMsg, client);
+                        return;
+                    }
+
+                    // If command is valid
+
+                    // Send message to channel if user is in subsribed list
+                    //#channel msg <user> -<message>
+                    if((contentIndex = msg.toString().indexOf("-"))>0){
+                        if(this.isSubscribedToChannel(senderId, parameterArray[2])){
+                            destMsg = "Message from channel "+parameterArray[2]+" by "+client.getInfo("loginId").toString()
+                                        +msg.toString().substring(contentIndex);
+                            this.sendToChannelList(this.getChannelSubscriberList(parameterArray[2]), destMsg, senderId, client);
+                        }
+                        else{
+                           destMsg = "You are not subscribed to channel "+parameterArray[2];
+                           this.replyToClient(client, destMsg);
+                        }
+                    }                        
+                 }
+                 else if(ChatServerCommandFilter.CHANNEL_CREATE.equals(parameterArray[1])){
+                        // #chanel create <channel_name>
+                        if(!this.isChannel(parameterArray[2])){
+                            this.createNewChannel(senderId, parameterArray[2]);
+                            destMsg = "Successfully created channel "+parameterArray[2];
+                        }
+                        else{
+                            destMsg = "Channel "+parameterArray[2]+" already exists";
+                        }
+                        this.replyToClient(client, destMsg);
+                 }
+                 else if(ChatServerCommandFilter.CHANNEL_REMOVE.equals(parameterArray[1])){
+                        destMsg = this.removeChannel(senderId, parameterArray[2]);
+                        this.replyToClient(client, destMsg);
+                 }
+                 else if(ChatServerCommandFilter.CHANNEL_SUBSCRIBE.equals(parameterArray[1])){
+                        if(this.isChannel(parameterArray[2])){
+                            if(!this.isSubscribedToChannel(senderId, parameterArray[2])){
+                                this.subscribeToChannel(senderId, parameterArray[2]);
+                                destMsg = "Successfully subscribed to channel "+parameterArray[2];
+                            }
+                            else{
+                                destMsg = "Already subscribed to channel "+parameterArray[2];
+                            }
+                        }
+                        else{
+                            destMsg = "Channel "+parameterArray[2]+"does not exist";
+                        }
+                        this.replyToClient(client, destMsg);
+                 }
+                 else if(ChatServerCommandFilter.CHANNEL_UNSUBSCRIBE.equals(parameterArray[1])){
+                        if(this.isSubscribedToChannel(senderId, parameterArray[2])){
+                            if(!this.isChannelOwner(senderId, parameterArray[2])){
+                                this.unsubscribeFromChannel(senderId, parameterArray[2]);
+                                destMsg = "Successfully unsubscribed from channel "+parameterArray[2];
+                            }
+                            else{
+                                destMsg = "You are the owner. You cannot unsubscribed from channel "+parameterArray[2];
+                            }
+                            
+                        }
+                        else{
+                            destMsg = "Not subscribed to channel "+parameterArray[2];
+                        }
+                        this.replyToClient(client, destMsg);
+                 }
+                 else if(ChatServerCommandFilter.CHANNEL_LIST.equals(parameterArray[1])){
+                        if(ChatServerCommandFilter.CHANNEL_LIST_ALL.equals(parameterArray[2])){
+                            channelListBuilder = new StringBuilder();
+                            channelNameList = this.getChannelNameList();
+                            channelListBuilder.append("Channel List:\n");
+                            for(String s:channelNameList){
+                                channelListBuilder.append("-");
+                                channelListBuilder.append(s);
+                                channelListBuilder.append("\n");
+                            }
+                            destMsg = channelListBuilder.toString();
+                                
+                        }
+                        else if(ChatServerCommandFilter.CHANNEL_LIST_SUBSCRIBED.equals(parameterArray[2])){
+                            channelListBuilder = new StringBuilder();
+                            channelNameList = this.getSubscribedList(senderId);
+                            channelListBuilder.append("Subscribed Channel List:\n");
+                            for(String s:channelNameList){
+                                channelListBuilder.append("-");
+                                channelListBuilder.append(s);
+                                channelListBuilder.append("\n");
+                            }
+                            destMsg = channelListBuilder.toString();
+                        }
+                        
+                        this.replyToClient(client, destMsg);
+
+                  }
+                  else{
+                        // Invalid channel command
+                       this.replyToClient(client, destMsg);
+                  }
+            }
+            catch(ArrayIndexOutOfBoundsException ex){
+                    this.replyToClient(client, destMsg);
+            }
+        }
+        else if(msg.toString().startsWith(ChatServerCommandFilter.COMMAND_SYMBOL+ChatServerCommandFilter.HELP)){
+            this.replyToClient(client, "You can only send private messages or message to a channel.\nPrivate message command:\n-Send message to "
+                    + "<user>:\n\t#msg <user> -<your message> \n\tE.g. #msg joe -How are you?\n"+getChannelUsage());
+        }
         else{
-            this.sendToAllClients(msg);
+            this.replyToClient(client, "You can only send private messages or message to a channel.\nPrivate message command:\n-Send message to "
+                    + "<user>:\n\t#msg <user> -<your message> \n\tE.g. #msg joe -How are you?\n"+getChannelUsage());
         }
     }
 
 
+    // Helper functions to Handle channels
+    private String invalidChannelUsageMessage(){
+        return "Invalid usage of the channel command.\n"+this.getChannelUsage();
+    }
+    private String getChannelUsage(){
+        String channelUsage = "Channel commands:\n"
+                + "-Create a new channel:\n\t #channel create <channel_name>\n"
+                + "-Remove a channel created by you:\n\t#channel remove <channel_name>\n"
+                + "-Subscribe to a channel:\n\t#channel subscribe <channel_name>\n"
+                + "-Unsubscribe from  a channel:\n\t#channel unsubscribe <channel_name>\n"
+                + "-List all existing channels:\n\t#channel list all \n"
+                + "-List channels that you are subscribed to:\n\t#channel list subscribe\n"
+                + "-Send a message to channel:\n\t #channel msg <channel_name> -<msg>\n";
 
-    private void sendToClient(String destUser, String msg, ConnectionToClient client){
+        return channelUsage;
+    }
+
+    private boolean isChannel(String channelName){
+        for(Channel c: channelList){
+            if(c.getChannelName().equals(channelName)){
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private Channel getChannel(String channelName){
+
+        for(Channel c: channelList){
+            if(c.getChannelName().equals(channelName)){
+                return c;
+            }
+        }
+        return null;
+    }
+
+    private void createNewChannel(String owner, String channelName){
+        Channel c = new Channel(owner,channelName);
+        c.getSubscriberList().add(owner);
+        this.channelList.add(c);
+    }
+
+    private String removeChannel(String owner, String channelName){
+        String returnMessage="Channel "+channelName+" does not exist";;
+        Channel c;
+        for(int i=0;i<channelList.size();i++){
+            c = channelList.get(i);
+            if(c.getChannelName().equals(channelName)){
+                if(c.getOwner().equals(owner)){                            
+                    channelList.remove(i);     
+                    returnMessage = "Successfully removed channel "+c.getChannelName();
+                }
+                else{
+                    returnMessage = "You are not the owner of channel "+channelName;
+                }
+            }
+        }                
+        return returnMessage;
+    }
+    
+    private boolean isChannelOwner(String owner, String channelName){
+        Channel c = this.getChannel(channelName);
+        return c!=null && c.getOwner().equals(owner) ? true : false;
+    }
+
+    private boolean isSubscribedToChannel(String loginId, String channelName){
+        List<String> subscriberList = this.getChannelSubscriberList(channelName);
+        return (subscriberList.contains(loginId)) ?  true : false;
+    }
+
+    private void subscribeToChannel(String loginId, String channelName){
+        Channel c;
+        for(int i=0;i<channelList.size();i++){
+            c = channelList.get(i);
+            if(c.getChannelName().equals(channelName)){
+                c.getSubscriberList().add(loginId);
+            }
+        }
+    }
+
+    private void unsubscribeFromChannel(String loginId, String channelName){
+        Channel c;
+        for(int i=0;i<channelList.size();i++){
+            c = channelList.get(i);
+            if(c.getChannelName().equals(channelName)){
+                c.getSubscriberList().remove(loginId);
+            }
+        }
+    }
+
+    private List<String> getSubscribedList(String loginId){
+        List<String> subscribedChannelList = new ArrayList<String>();
+        for(Channel c: channelList){
+            for(String user: c.getSubscriberList()){
+                if(user.equals(loginId)){
+                    subscribedChannelList.add(c.getChannelName());
+                    break;
+                }
+            }
+        }
+        return subscribedChannelList;
+    }
+
+    private List<String> getChannelNameList(){
+        List<String> channelNameList = new ArrayList<String>();
+        for(Channel c: channelList){
+            channelNameList.add(c.getChannelName());
+        }
+        return channelNameList;
+    }
+
+    private List<String> getChannelSubscriberList(String channelName){
+        for(Channel c: channelList){
+            if(c.getChannelName().equals(channelName)){
+                return c.getSubscriberList();
+            }
+        }
+        return new ArrayList();
+    }
+
+    private void sendToChannelList(List<String> subscriberList, String message, String sender, ConnectionToClient client){
+        for(String subscriber:subscriberList){
+            this.sendToClient(subscriber, message, client);
+        }
+        
+    }
+
+    private boolean sendToClient(String destUser, String msg, ConnectionToClient client){
         Thread[] clientThreadList =  this.getClientConnections();
         boolean isLoginUser=false;
         for (int i=0; i<clientThreadList.length; i++){
@@ -132,22 +387,17 @@ public class EchoServer extends AbstractServer
                 System.out.println("Error in sending Data");
             }
         }
-        if(!isLoginUser){
-            try{
-                client.sendToClient("unable to send to the destination client");
-            }catch (Exception ex) {
-                System.out.println("Error in replying Status");
-            }
-        }
-        else{
-            try{
-                client.sendToClient("send to the destination client successfully");
-            }catch (Exception ex) {
-                System.out.println("Error in replying Status");
-            }
-       }
+        return isLoginUser;
     }
-    
+
+    private void replyToClient(ConnectionToClient client, String message){
+        try {
+            client.sendToClient(message);
+        } catch (IOException ex) {
+            System.out.println("Could not send message to client "+client.getInfo("loginId").toString());
+        }
+    }
+
   /**
    * This method overrides the one in the superclass.  Called
    * when the server starts listening for connections.

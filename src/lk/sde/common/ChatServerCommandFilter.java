@@ -26,12 +26,17 @@ public class ChatServerCommandFilter {
      * List of all the commands that the server can perform.
      */
     public final static String CHANNEL = "channel";
+    public final static String CHANNEL_MSG = "msg";
     public final static String CHANNEL_CREATE = "create";
-    public final static String CHANNEL_LIST_ALL = "list all";
+    public final static String CHANNEL_REMOVE = "remove";
+    public final static String CHANNEL_LIST = "list";
+    public final static String CHANNEL_LIST_ALL = "all";
     public final static String CHANNEL_SUBSCRIBE = "subscribe";
     public final static String CHANNEL_UNSUBSCRIBE = "unsubscribe";
-    public final static String CHANNEL_LIST_SUBSCRIBED = "list subscribed";
+    public final static String CHANNEL_LIST_SUBSCRIBED = "subscribed";
     public final static String MSG = "msg";
+    public final static String HELP = "help";
+
 
 
     /**
