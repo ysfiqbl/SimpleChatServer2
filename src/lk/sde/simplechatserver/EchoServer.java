@@ -70,6 +70,7 @@ public class EchoServer extends AbstractServer
     public void handleMessageFromClient(Object msg, ConnectionToClient client){
         String[] parameterArray;
         String senderId = client.getInfo("loginId")!= null ?client.getInfo("loginId").toString() : null;
+
         if(msg.toString().startsWith("#login")){
             if(client.getInfo("loginId")==null){ // No previous login session
                 client.setInfo("loginId", msg.toString().split("\\s")[1]);
@@ -85,26 +86,12 @@ public class EchoServer extends AbstractServer
             }
             return;
         }
-        System.out.println("Message received: " +senderId+"> "+ msg + " from " + client);
+        
         if(msg.toString().startsWith("#msg")){ // msg DestUser - Content
             String destUser=msg.toString().substring(1).split(" ")[1];
             int ContentIndex=msg.toString().indexOf("-");
             String destMsg = "Private Message From:"+client.getInfo("loginId").toString()+msg.toString().substring(ContentIndex);
             boolean isLoginUser = this.sendToClient(destUser, destMsg, client);
-//                Thread[] clientThreadList =  this.getClientConnections();
-//                boolean isLoginUser=false;
-//                for (int i=0; i<clientThreadList.length; i++){
-//                    try{
-//                        String ThreadUser=((ConnectionToClient)clientThreadList[i]).getInfo("loginId").toString();
-//                        if(ThreadUser.equalsIgnoreCase(DestUser)){
-//                            String DestMsg="Private Message From:"+client.getInfo("loginId").toString()+msg.toString().substring(ContentIndex);
-//                            ((ConnectionToClient)clientThreadList[i]).sendToClient(DestMsg);
-//                            isLoginUser=true;
-//                        }
-//                    }catch (Exception ex) {
-//                        System.out.println("Error in sending Data");
-//                    }
-//                }
             if(!isLoginUser){
                 try{
                     client.sendToClient("unable to send to the destination client");
@@ -119,6 +106,7 @@ public class EchoServer extends AbstractServer
                     System.out.println("Error in replying Status");
                 }
             }
+            return;
         }
         if(msg.toString().startsWith(ChatServerCommandFilter.COMMAND_SYMBOL+ChatServerCommandFilter.CHANNEL)){
 
@@ -140,14 +128,19 @@ public class EchoServer extends AbstractServer
                     // Send message to channel if user is in subsribed list
                     //#channel msg <user> -<message>
                     if((contentIndex = msg.toString().indexOf("-"))>0){
-                        if(this.isSubscribedToChannel(senderId, parameterArray[2])){
-                            destMsg = "Message from channel "+parameterArray[2]+" by "+client.getInfo("loginId").toString()
-                                        +msg.toString().substring(contentIndex);
-                            this.sendToChannelList(this.getChannelSubscriberList(parameterArray[2]), destMsg, senderId, client);
+                        if(this.isChannel(parameterArray[2])){
+                            if(this.isSubscribedToChannel(senderId, parameterArray[2])){
+                                destMsg = "Message from channel "+parameterArray[2]+" by "+client.getInfo("loginId").toString()
+                                            +msg.toString().substring(contentIndex);
+                                this.sendToChannelList(this.getChannelSubscriberList(parameterArray[2]), destMsg, senderId, client);
+                            }
+                            else{
+                               destMsg = "You are not subscribed to channel "+parameterArray[2];
+                               this.replyToClient(client, destMsg);
+                            }
                         }
                         else{
-                           destMsg = "You are not subscribed to channel "+parameterArray[2];
-                           this.replyToClient(client, destMsg);
+                            this.replyToClient(client, "Channel does not exist");
                         }
                     }                        
                  }
@@ -233,15 +226,17 @@ public class EchoServer extends AbstractServer
             catch(ArrayIndexOutOfBoundsException ex){
                     this.replyToClient(client, destMsg);
             }
+            return;
         }
-        else if(msg.toString().startsWith(ChatServerCommandFilter.COMMAND_SYMBOL+ChatServerCommandFilter.HELP)){
+        if(msg.toString().startsWith(ChatServerCommandFilter.COMMAND_SYMBOL+ChatServerCommandFilter.HELP)){
             this.replyToClient(client, "You can only send private messages or message to a channel.\nPrivate message command:\n-Send message to "
                     + "<user>:\n\t#msg <user> -<your message> \n\tE.g. #msg joe -How are you?\n"+getChannelUsage());
+            return;
         }
-        else{
-            this.replyToClient(client, "You can only send private messages or message to a channel.\nPrivate message command:\n-Send message to "
+        
+        this.replyToClient(client, "You can only send private messages or message to a channel.\nPrivate message command:\n-Send message to "
                     + "<user>:\n\t#msg <user> -<your message> \n\tE.g. #msg joe -How are you?\n"+getChannelUsage());
-        }
+        
     }
 
 
